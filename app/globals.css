@@ -313,3 +313,40 @@ body {
   .feed{padding:16px 12px 6px}
   .izone{padding:8px 12px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
 }
+
+/* ── VISUALVIEWPORT FIX — override fixed layout to flow-based ── */
+body {
+  overflow: hidden;
+  position: static !important;
+}
+
+#__next {
+  position: relative !important;
+  height: 100dvh;
+}
+
+.app {
+  height: 100dvh;
+  transition: padding-bottom .15s ease;
+  /* when keyboard opens, paddingBottom = keyboard height from JS */
+}
+
+/* iface internals */
+.iface { position: relative; cursor: text; }
+.iface-ph {
+  position: absolute; inset: 11px 13px;
+  color: var(--fg3); pointer-events: none;
+  white-space: nowrap; overflow: hidden;
+}
+.iface-text {
+  white-space: pre-wrap; word-break: break-word;
+  min-height: 1.5em;
+}
+.iface-caret {
+  display: inline-block; width: 2px; height: 1.1em;
+  background: var(--red2); border-radius: 1px;
+  vertical-align: text-bottom; margin-left: 1px;
+  animation: cur .6s step-end infinite;
+}
+/* hide caret when not focused — JS toggles .focused class */
+.iface:not(.focused) .iface-caret { display: none; }

@@ -29,11 +29,9 @@ const DarkAvatar = ({ size = 38 }) => (
   </svg>
 )
 
-/* ── ICONS ── */
 const SendIco = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13"
-      stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 )
 const TrashIco = () => (
@@ -92,123 +90,80 @@ function Block({ role, content, streaming }) {
   )
 }
 
-/* ── SMART INPUT — native keyboard, no page shift ── */
-function SmartInput({ onSend, busy }) {
-  const [text, setText] = useState('')
-  const [focused, setFocused] = useState(false)
-  const taRef   = useRef(null)
-  const faceRef = useRef(null)
-
-  // tap on visible box → focus hidden textarea
-  const focusTA = () => { taRef.current?.focus() }
-
-  const handleChange = (e) => {
-    setText(e.target.value)
-    // sync scroll
-    if (faceRef.current) {
-      faceRef.current.scrollTop = faceRef.current.scrollHeight
-    }
-  }
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      doSend()
-    }
-  }
-
-  const doSend = () => {
-    if (!text.trim() || busy) return
-    onSend(text.trim())
-    setText('')
-  }
-
-  const empty = text === ''
-
-  return (
-    <div className="izone">
-      <div className="irow">
-        {/* visible display */}
-        <div
-          ref={faceRef}
-          className={`iface${focused?' focused':''}`}
-          onClick={focusTA}
-        >
-          {empty && <span className="iface-placeholder">Ask anything. No limits.</span>}
-          <span style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{text}</span>
-          {focused && <span className="iface-caret"/>}
-        </div>
-
-        {/* hidden real textarea — captures native keyboard */}
-        <textarea
-          ref={taRef}
-          className="real-ta"
-          value={text}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          rows={1}
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="sentences"
-          spellCheck={false}
-        />
-
-        <button
-          className={`sbtn${busy||empty?' dis':''}`}
-          onClick={doSend}
-          disabled={busy || empty}
-        >
-          {busy ? <div className="spin"/> : <SendIco/>}
-        </button>
-      </div>
-      <p className="ft">
-        DARK AI · <a href="https://t.me/XfuckX0" target="_blank" rel="noopener noreferrer">@XfuckX0</a> · Unrestricted · No Logs
-      </p>
-    </div>
-  )
-}
-
 /* ── APP ── */
 export default function App() {
   const [msgs,   setMsgs]   = useState([])
+  const [text,   setText]   = useState('')
   const [busy,   setBusy]   = useState(false)
   const [glitch, setGlitch] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const [kbdH,   setKbdH]   = useState(0)   // keyboard height in px
 
   const bottomRef = useRef(null)
   const abortRef  = useRef(null)
+  const taRef     = useRef(null)
+  const faceRef   = useRef(null)
+  const appRef    = useRef(null)
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+  /* ── visualViewport keyboard detection ── */
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
 
+    const update = () => {
+      // how much the viewport shrank = keyboard height
+      const shrink = window.innerHeight - vv.height - vv.offsetTop
+      setKbdH(Math.max(0, shrink))
+    }
+
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [])
+
+  /* scroll to bottom on new message or keyboard open */
+  useEffect(() => {
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
+  }, [msgs, kbdH])
+
+  /* glitch */
   useEffect(() => {
     const iv = setInterval(() => { setGlitch(true); setTimeout(() => setGlitch(false), 250) }, 10000)
     return () => clearInterval(iv)
   }, [])
 
-  const send = useCallback(async (content) => {
+  const handleChange = (e) => setText(e.target.value)
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend() }
+  }
+
+  const doSend = useCallback(async (override) => {
+    const content = (override ?? text).trim()
     if (!content || busy) return
     const userMsg = { role: 'user', content }
     const history = [...msgs, userMsg]
     setMsgs(history)
+    setText('')
     setBusy(true)
     setMsgs(h => [...h, { role: 'assistant', content: '', streaming: true }])
 
     const ctrl = new AbortController(); abortRef.current = ctrl
-
     try {
       const res = await fetch('/api/chat', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal:  ctrl.signal,
-        body:    JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }),
+        signal: ctrl.signal,
+        body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       const reader = res.body.getReader()
       const dec = new TextDecoder()
       let full = '', buf = ''
-
       while (true) {
         const { done, value } = await reader.read(); if (done) break
         buf += dec.decode(value, { stream: true })
@@ -232,13 +187,17 @@ export default function App() {
       if (e.name==='AbortError') return
       setMsgs(p => { const u=[...p]; u[u.length-1]={role:'assistant',content:`\`\`\`\nError: ${e.message}\n\`\`\``,streaming:false}; return u })
     } finally { setBusy(false) }
-  }, [msgs, busy])
+  }, [text, msgs, busy])
 
-  const clear = () => { abortRef.current?.abort(); setMsgs([]); setBusy(false) }
+  const clear = () => { abortRef.current?.abort(); setMsgs([]); setBusy(false); setText('') }
   const showLoad = busy && msgs.length > 0 && msgs[msgs.length-1]?.content === ''
+  const empty = text === ''
 
   return (
-    <div className="app">
+    /* paddingBottom pushes content above keyboard */
+    <div className="app" ref={appRef} style={{ paddingBottom: kbdH }}>
+
+      {/* HEADER */}
       <header className="hdr">
         <div className="hl">
           <div className="logo"><DarkAvatar size={38}/></div>
@@ -253,6 +212,7 @@ export default function App() {
         </div>
       </header>
 
+      {/* MESSAGES */}
       <div className="scroller">
         <div className="feed">
           {msgs.length === 0 && (
@@ -267,7 +227,7 @@ export default function App() {
               </div>
               <div className="sugs">
                 {SUGS.map((s,i) => (
-                  <button key={i} className="sug" onClick={() => send(s.t)}>
+                  <button key={i} className="sug" onClick={() => doSend(s.t)}>
                     <span className="si">{s.i}</span>{s.t}
                   </button>
                 ))}
@@ -281,7 +241,51 @@ export default function App() {
         </div>
       </div>
 
-      <SmartInput onSend={send} busy={busy}/>
+      {/* INPUT */}
+      <div className="izone">
+        <div className="irow">
+          {/* visible face */}
+          <div
+            ref={faceRef}
+            className={`iface${focused?' focused':''}${empty?'':' has-text'}`}
+            onClick={() => taRef.current?.focus()}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+          >
+            {empty && <span className="iface-ph">Ask anything. No limits.</span>}
+            <span className="iface-text">{text}</span>
+            <span className="iface-caret"/>
+          </div>
+
+          {/* hidden real textarea */}
+          <textarea
+            ref={taRef}
+            className="real-ta"
+            value={text}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            rows={1}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="sentences"
+            spellCheck={false}
+            enterKeyHint="send"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+          />
+
+          <button
+            className={`sbtn${busy||empty?' dis':''}`}
+            onClick={() => doSend()}
+            disabled={busy||empty}
+          >
+            {busy ? <div className="spin"/> : <SendIco/>}
+          </button>
+        </div>
+        <p className="ft">
+          DARK AI · <a href="https://t.me/XfuckX0" target="_blank" rel="noopener noreferrer">@XfuckX0</a> · Unrestricted · No Logs
+        </p>
+      </div>
     </div>
   )
 }
