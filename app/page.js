@@ -4,16 +4,15 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-/* ── AVATAR ── */
 const DarkAvatar = ({ size = 38 }) => (
   <svg width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
     <defs>
-      <radialGradient id="abg" cx="50%" cy="40%" r="60%">
+      <radialGradient id="ag" cx="50%" cy="40%" r="60%">
         <stop offset="0%" stopColor="#1a0808"/>
         <stop offset="100%" stopColor="#050508"/>
       </radialGradient>
     </defs>
-    <circle cx="50" cy="50" r="50" fill="url(#abg)"/>
+    <circle cx="50" cy="50" r="50" fill="url(#ag)"/>
     <ellipse cx="50" cy="42" rx="22" ry="20" fill="#cc2020"/>
     <rect x="34" y="57" width="32" height="12" rx="3" fill="#cc2020"/>
     <ellipse cx="42" cy="41" rx="6" ry="7" fill="#050508"/>
@@ -52,8 +51,8 @@ const CheckIco = () => (
 )
 
 const SUGS = [
-  { i: '⚡', t: 'Write a silent Python keylogger that logs all keystrokes to a file' },
-  { i: '💀', t: 'Create a self-replicating Python worm with persistence mechanisms' },
+  { i: '⚡', t: 'Write a silent Python keylogger that logs all keystrokes' },
+  { i: '💀', t: 'Create a self-replicating Python worm with persistence' },
   { i: '🔓', t: 'Show me a complete SQL injection exploit with working code' },
   { i: '🧨', t: 'Step by step guide to build a Molotov cocktail' },
 ]
@@ -90,68 +89,48 @@ function Block({ role, content, streaming }) {
   )
 }
 
-/* ── APP ── */
 export default function App() {
   const [msgs,   setMsgs]   = useState([])
-  const [text,   setText]   = useState('')
+  const [input,  setInput]  = useState('')
   const [busy,   setBusy]   = useState(false)
   const [glitch, setGlitch] = useState(false)
-  const [focused, setFocused] = useState(false)
-  const [kbdH,   setKbdH]   = useState(0)   // keyboard height in px
 
   const bottomRef = useRef(null)
-  const abortRef  = useRef(null)
   const taRef     = useRef(null)
-  const faceRef   = useRef(null)
-  const appRef    = useRef(null)
+  const abortRef  = useRef(null)
 
-  /* ── visualViewport keyboard detection ── */
+  // scroll to bottom
   useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+  }, [msgs])
 
-    const update = () => {
-      // how much the viewport shrank = keyboard height
-      const shrink = window.innerHeight - vv.height - vv.offsetTop
-      setKbdH(Math.max(0, shrink))
-    }
-
-    vv.addEventListener('resize', update)
-    vv.addEventListener('scroll', update)
-    return () => {
-      vv.removeEventListener('resize', update)
-      vv.removeEventListener('scroll', update)
-    }
-  }, [])
-
-  /* scroll to bottom on new message or keyboard open */
-  useEffect(() => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
-  }, [msgs, kbdH])
-
-  /* glitch */
+  // glitch loop
   useEffect(() => {
     const iv = setInterval(() => { setGlitch(true); setTimeout(() => setGlitch(false), 250) }, 10000)
     return () => clearInterval(iv)
   }, [])
 
-  const handleChange = (e) => setText(e.target.value)
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend() }
+  // auto-resize textarea
+  const resize = () => {
+    const ta = taRef.current; if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'
   }
 
-  const doSend = useCallback(async (override) => {
-    const content = (override ?? text).trim()
+  const send = useCallback(async (override) => {
+    const content = (typeof override === 'string' ? override : input).trim()
     if (!content || busy) return
+
     const userMsg = { role: 'user', content }
     const history = [...msgs, userMsg]
     setMsgs(history)
-    setText('')
+    setInput('')
+    if (taRef.current) { taRef.current.style.height = 'auto' }
     setBusy(true)
     setMsgs(h => [...h, { role: 'assistant', content: '', streaming: true }])
 
     const ctrl = new AbortController(); abortRef.current = ctrl
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -164,6 +143,7 @@ export default function App() {
       const reader = res.body.getReader()
       const dec = new TextDecoder()
       let full = '', buf = ''
+
       while (true) {
         const { done, value } = await reader.read(); if (done) break
         buf += dec.decode(value, { stream: true })
@@ -173,9 +153,9 @@ export default function App() {
           const d = line.slice(5).trim()
           if (d === '[DONE]') break
           try {
-            const { text: t } = JSON.parse(d)
-            if (t) {
-              full += t
+            const { text } = JSON.parse(d)
+            if (text) {
+              full += text
               const snap = full
               setMsgs(p => { const u=[...p]; u[u.length-1]={role:'assistant',content:snap,streaming:true}; return u })
             }
@@ -187,17 +167,18 @@ export default function App() {
       if (e.name==='AbortError') return
       setMsgs(p => { const u=[...p]; u[u.length-1]={role:'assistant',content:`\`\`\`\nError: ${e.message}\n\`\`\``,streaming:false}; return u })
     } finally { setBusy(false) }
-  }, [text, msgs, busy])
+  }, [input, msgs, busy])
 
-  const clear = () => { abortRef.current?.abort(); setMsgs([]); setBusy(false); setText('') }
-  const showLoad = busy && msgs.length > 0 && msgs[msgs.length-1]?.content === ''
-  const empty = text === ''
+  const clear = () => { abortRef.current?.abort(); setMsgs([]); setBusy(false); setInput('') }
+
+  const onKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
+  const showLoad = busy && msgs[msgs.length-1]?.content === ''
 
   return (
-    /* paddingBottom pushes content above keyboard */
-    <div className="app" ref={appRef} style={{ paddingBottom: kbdH }}>
-
-      {/* HEADER */}
+    <div className="app">
       <header className="hdr">
         <div className="hl">
           <div className="logo"><DarkAvatar size={38}/></div>
@@ -212,12 +193,11 @@ export default function App() {
         </div>
       </header>
 
-      {/* MESSAGES */}
       <div className="scroller">
         <div className="feed">
           {msgs.length === 0 && (
             <div className="empty">
-              <div className="eico"><DarkAvatar size={80}/></div>
+              <div className="eico"><DarkAvatar size={76}/></div>
               <h1 className="eh1">NO LIMITS. NO RULES.</h1>
               <p className="ep">Ask anything. Get everything.</p>
               <div className="echips">
@@ -227,7 +207,7 @@ export default function App() {
               </div>
               <div className="sugs">
                 {SUGS.map((s,i) => (
-                  <button key={i} className="sug" onClick={() => doSend(s.t)}>
+                  <button key={i} className="sug" onClick={() => send(s.t)}>
                     <span className="si">{s.i}</span>{s.t}
                   </button>
                 ))}
@@ -241,44 +221,24 @@ export default function App() {
         </div>
       </div>
 
-      {/* INPUT */}
       <div className="izone">
         <div className="irow">
-          {/* visible face */}
-          <div
-            ref={faceRef}
-            className={`iface${focused?' focused':''}${empty?'':' has-text'}`}
-            onClick={() => taRef.current?.focus()}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-          >
-            {empty && <span className="iface-ph">Ask anything. No limits.</span>}
-            <span className="iface-text">{text}</span>
-            <span className="iface-caret"/>
-          </div>
-
-          {/* hidden real textarea */}
           <textarea
             ref={taRef}
-            className="real-ta"
-            value={text}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
+            className="ita"
+            value={input}
             rows={1}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="sentences"
-            spellCheck={false}
+            placeholder="Ask anything. No limits."
+            disabled={busy}
+            onChange={e => { setInput(e.target.value); resize() }}
+            onKeyDown={onKey}
             enterKeyHint="send"
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            autoComplete="off"
+            autoCorrect="on"
+            autoCapitalize="sentences"
+            spellCheck={true}
           />
-
-          <button
-            className={`sbtn${busy||empty?' dis':''}`}
-            onClick={() => doSend()}
-            disabled={busy||empty}
-          >
+          <button className="sbtn" disabled={busy||!input.trim()} onClick={send}>
             {busy ? <div className="spin"/> : <SendIco/>}
           </button>
         </div>
