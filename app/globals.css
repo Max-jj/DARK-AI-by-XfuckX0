@@ -286,3 +286,67 @@ html, body {
   .feed{padding:16px 12px 6px}
   .izone{padding:8px 12px max(12px,env(safe-area-inset-bottom))}
 }
+
+/* ── CODE BLOCKS ── */
+.cb {
+  background: #040408;
+  border: 1px solid var(--b3);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.cb-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(255,255,255,.03);
+  border-bottom: 1px solid var(--b3);
+}
+
+.cb-lang {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg3);
+  letter-spacing: 1px;
+  text-transform: lowercase;
+}
+
+.cb-pre {
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cb-pre > code {
+  display: block;
+  padding: 14px 16px;
+  background: none;
+  color: #d5d5e8;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+.cb-pre::-webkit-scrollbar { height: 3px; }
+.cb-pre::-webkit-scrollbar-thumb { background: var(--b4); border-radius: 2px; }
+
+/* inline code */
+.ic {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--s5);
+  color: var(--red3);
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--b3);
+}
+
+/* override old pre/code styles since cb handles it */
+.bbl pre { all: unset; }
+.bbl pre > code { all: unset; }
